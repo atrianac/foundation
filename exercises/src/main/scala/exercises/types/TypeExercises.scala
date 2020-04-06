@@ -3,9 +3,13 @@ package exercises.types
 import java.time.Instant
 import java.util.UUID
 
+import cats.data.NonEmptyList
 import eu.timepit.refined.types.numeric.PosInt
 import exercises.sideeffect.IOExercises.IO
 import exercises.types.Card._
+import exercises.types.TypeExercises.Comparision.{EqualsTo, GreaterThan, LessThan}
+import exercises.types.TypeExercises.OrderStatus.{Checkout, Submitted}
+import exercises.types.TypeExercises.StreetItem.{PostCode, StreetName, StreetNumber}
 
 // You can run and print things here:
 object TypeApp extends App {
@@ -16,6 +20,13 @@ object TypeApp extends App {
 
 object TypeExercises {
 
+
+  //
+  //
+  //
+  // IO[C, Either[E, T]]
+  //
+
   ////////////////////////
   // 1. Misused types
   ////////////////////////
@@ -25,7 +36,22 @@ object TypeExercises {
   //         compareChar('c', 'c') ==  0
   //         compareChar('c', 'a') ==  1
   // What is wrong with this function? How could you improve it?
-  def compareChar(c1: Char, c2: Char): Int = ???
+  def compareChar(c1: Char, c2: Char): Int =
+    if(c1 < c2) -1
+    else if (c1 == c2) 0
+    else 1
+
+  sealed trait Comparision
+  object Comparision {
+    case object LessThan extends Comparision
+    case object EqualsTo extends  Comparision
+    case object GreaterThan extends Comparision
+  }
+
+  def compareCharTypeCheck(c1: Char, c2: Char): Comparision =
+    if(c1 < c2) LessThan
+    else if (c1 == c2) EqualsTo
+    else GreaterThan
 
   // 1b. Implement `mostRecentBlogs` that returns the `n` most recent blog posts
   // such as mostRecentBlogs(1)(List(
@@ -35,13 +61,43 @@ object TypeExercises {
   // What is wrong with this function? How could you improve it?
   case class BlogPost(id: String, title: String, createAt: String)
 
-  def mostRecentBlogs(n: Int)(blogs: List[BlogPost]): List[BlogPost] = ???
+  def mostRecentBlogs(n: Int)(blogs: List[BlogPost]): List[BlogPost] =
+    blogs.sortBy(_.createAt).take(n)
+
+  case class BlogPostTypeCheck(id: String, title: String, createAt: Instant)
+
+  def mostRecentBlogsTypeCheck(n: Int)(blogs: List[BlogPostTypeCheck]): List[BlogPostTypeCheck] =
+    blogs.sortBy(_.createAt).take(n)
+
 
   // 1c. Implement `User#address` that returns the full address for a User (e.g. to send a parcel)
   // such as User("John Doe", Some(108), Some("Cannon Street"), Some("EC4N 6EU")) == "108 Canon Street EC4N 6EU"
   // What is wrong with this function? How could you improve it?
   case class User(name: String, streetNumber: Option[Int], streetName: Option[String], postCode: Option[String]) {
-    def address: String = ???
+    def address: String = {
+      val stNumber = streetNumber.getOrElse("")
+      val stName = streetName.getOrElse("")
+      val stPostCode = streetName.getOrElse("")
+
+      stNumber + stName + stPostCode
+    }
+  }
+
+  trait StreetItem
+  object StreetItem {
+    case class StreetNumber(value: Int) extends StreetItem
+    case class StreetName(value: String) extends StreetItem
+    case class PostCode(value: String) extends  StreetItem
+  }
+
+  case class UserTypeCheck(name: String, streetNumber: Option[StreetNumber], streetName: Option[StreetName], postCode: Option[PostCode]) {
+    def address: String = {
+      val stNumber = streetNumber.fold("")(_.value.toString)
+      val stName = streetName.fold("")(_.value)
+      val stPostCode = streetName.fold("")(_.value)
+
+      stNumber + stName + stPostCode
+    }
   }
 
   // 1d. Implement `Invoice#discountFirstItem` that returns a new invoice with the first item discounted.
@@ -50,18 +106,63 @@ object TypeExercises {
   case class InvoiceItem(id: String, quantity: Int, price: Double)
   // An invoice must have at least one item.
   case class Invoice(id: String, items: List[InvoiceItem]) {
-    def discountFirstItem(discountPercent: Double): Invoice = ???
+    def discountFirstItem(discountPercent: Double): Invoice = items match {
+      case ::(fstItem, tail) => this.copy(items = fstItem.copy(price = discountPercent * fstItem.price) :: tail)
+      case Nil => this
+    }
+  }
+
+  // case class EndavaEmpleados(id: number, name: String)
+  //
+  // case class EndavaNoEmpleados(id: number, name: String)
+  //
+  // type Asistentes = EndavaEmpleados | EndavaNoEmpleados
+  // case class Conferencia(asistentes: List[Asistentes])
+
+  // List(Alejandro, Javier, Farid, Danilo, Juan, Juan)
+  // List.head instaceOf
+
+  // List.head == Asistentes
+  // HList.head  == EndavaNoEmpleados
+  //
+
+  case class InvoiceTypeCheck(id: String, items: NonEmptyList[InvoiceItem]) {
+
+    def discountFirstItem(discountPercent: Double): InvoiceTypeCheck = {
+      val fstItem = this.items.head;
+      val itemDiscount = fstItem.copy(price = fstItem.price * discountPercent)
+      InvoiceTypeCheck(this.id, NonEmptyList(itemDiscount, items.tail))
+    }
   }
 
   // 1e. Implement `createTicket` that instantiates a Ticket with 0 story point,
   // a random ticket id (see `genTicketId`) and the current time (see `readNow`).
   // What is wrong with this function? How could you improve it?
-  def createTicket(title: String): IO[Ticket] = ???
+  def createTicket(title: String): IO[Ticket] = for {
+      ticketId <- genTicketId
+      currentTime <- readNow
+  } yield (Ticket(ticketId, title, 0, currentTime))
+
+  def genTicket(title: String): IO[Ticket] = for {
+    ticketId <- genTicketId
+    currentTime <- readNow
+  } yield (createTicket(ticketId, title, currentTime))
+
+
+  def createTicket(ticketId: TicketId, title: String, createdAt: Instant): Ticket =
+    Ticket(
+      id = ticketId,
+      title = title,
+      storyPoints = 0,
+      createdAt = createdAt
+    )
 
   def genTicketId: IO[TicketId] = IO.effect(TicketId(UUID.randomUUID()))
   def readNow: IO[Instant]      = IO.effect(Instant.now())
 
+
   case class TicketId(value: UUID)
+  // Tuple4[TicketId, String, Int, Instant]
   case class Ticket(id: TicketId, title: String, storyPoints: Int, createdAt: Instant)
 
   ////////////////////////
@@ -77,12 +178,51 @@ object TypeExercises {
   // When an order is in submitted, it must have a delivery address and a submitted timestamp (Instant).
   // When an order is in delivered, it must have a delivery address, a submitted and delivered timestamps (Instant).
   // An address consists of a street number and a post code.
-  trait Order
+  case class Order(orderId: OrderId, createdTime: CreatedTime, orderStatus: OrderStatus)
+
+  case class OrderId(uuid: UUID)
+  case class CreatedTime(instant: Instant)
+
+  trait OrderStatus
+  object OrderStatus {
+    case class Draft(basket: List[Item])                                                             extends OrderStatus
+    case class Checkout(basket: NonEmptyList[Item], deliveryAddress: Option[Address])                extends OrderStatus
+    case class Submitted(basket: NonEmptyList[Item], deliveryAddress: Address, submittedAt: Instant) extends OrderStatus
+    case class Delivered(basket: NonEmptyList[Item],
+                         deliveryAddress: Address,
+                         submittedAt: Instant,
+                         deliveredAt: Instant)
+      extends OrderStatus
+    case class Cancelled(previousState: Either[Checkout, Submitted], cancelledAt: Instant) extends OrderStatus
+  }
+
+
+  case class Item(itemId: ItemId, quantity: Quantity, price: Price)
+  case class ItemId(uuid: UUID)
+  case class Quantity(value: Int)
+  case class Price(value: Double)
+
+  case class Address(streetNumber: StreetNumber, postCode: PostCode)
+  case class StreetNumber(value: Int)
+  case class PostCode(value: String)
+
+  trait OrderOperationError
+  case class OrderTransitionStatusError(srcStatus: OrderStatus, msg: String) extends OrderOperationError
+  case class MandatoryFieldError(msg: String) extends OrderOperationError
 
   // 2b. Implement `submit` which encodes the order transition between `Checkout` to `Submitted`.
   // Verify all pre and post conditions are satisfied and if not encode the errors in an ADT.
   // What parameters should submit take?
-  def submit = ???
+  def submit(order: Order): Either[OrderOperationError, Order] =
+    order.orderStatus match {
+      case Checkout(basket, deliveryAddress) => {
+        deliveryAddress match {
+          case Some(value) => Right(order.copy(orderStatus = Submitted(basket, value, Instant.now())))
+          case None => Left(MandatoryFieldError("Field deliveryAddress is mandatory submitting the order"))
+        }
+      }
+      case _ => Left(OrderTransitionStatusError(order.orderStatus, "Cannot submit the order, incorrect status"))
+    }
 
   // 2c. Implement `deliver` which encodes the order transition between `Submitted` to `Delivered` status.
   // Verify all pre and post conditions are satisfied and, if not, encode the errors in an ADT.
@@ -121,22 +261,26 @@ object TypeExercises {
 
   // 3c. How many possible values exist of type Unit?
   val unit: Cardinality[Unit] = new Cardinality[Unit] {
-    def cardinality: Card = ???
+    def cardinality: Card = Constant(1)
+  }
+
+  val ioUnit: Cardinality[IO[Unit]] = new Cardinality[IO[Unit]] {
+    def cardinality: Card = Inf
   }
 
   // 3d. How many possible values exist of type Byte?
-  val ioUnit: Cardinality[IO[Unit]] = new Cardinality[IO[Unit]] {
-    def cardinality: Card = ???
+  val bool: Cardinality[Byte] = new Cardinality[Byte] {
+    def cardinality: Card = Constant(2) ^ Constant(8)
   }
 
   // 3e. How many possible values exist of type Option[Boolean]?
   val optBoolean: Cardinality[Option[Boolean]] = new Cardinality[Option[Boolean]] {
-    def cardinality: Card = ???
+    def cardinality: Card = Constant(1) + boolean.cardinality
   }
 
   // 3f. How many possible values exist of type IntOrBoolean?
   val intOrBoolean: Cardinality[IntOrBoolean] = new Cardinality[IntOrBoolean] {
-    def cardinality: Card = ???
+    def cardinality: Card = int.cardinality + boolean.cardinality
   }
 
   sealed trait IntOrBoolean
@@ -147,7 +291,7 @@ object TypeExercises {
 
   // 3g. How many possible values exist of type IntAndBoolean?
   val intAndBoolean: Cardinality[IntAndBoolean] = new Cardinality[IntAndBoolean] {
-    def cardinality: Card = ???
+    def cardinality: Card = int.cardinality * boolean.cardinality
   }
 
   case class IntAndBoolean(i: Int, b: Boolean)
@@ -158,12 +302,12 @@ object TypeExercises {
 
   // 3h. How many possible values exist of type Option[Nothing]?
   val optNothing: Cardinality[Option[Nothing]] = new Cardinality[Option[Nothing]] {
-    def cardinality: Card = ???
+    def cardinality: Card = Constant(1) + nothing.cardinality
   }
 
   // 3i. How many possible values exist of type (Boolean, Nothing)?
   val boolNothing: Cardinality[(Boolean, Nothing)] = new Cardinality[(Boolean, Nothing)] {
-    def cardinality: Card = ???
+    def cardinality: Card = boolean.cardinality * nothing.cardinality
   }
 
   // 3j. How many possible implementation exist for `getCurrency`?
